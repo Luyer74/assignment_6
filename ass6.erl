@@ -45,7 +45,7 @@ subscribe_partner(Partner) ->
         ending ->
             io:format("Partner ~p is subscribed ~n", [Partner]);
         exists ->
-            io:format("Partiner ~p is taken. Choose another name~n", [Partner])
+            io:format("Partner ~p is taken. Choose another name~n", [Partner])
     end.
 
 
@@ -63,6 +63,9 @@ remove_product(Product) ->
 
 modify_stock(Product, Quantity) ->
     {getAlias(), getNode(getAlias())} ! {modify_stock, Product, Quantity}.
+
+% create_order(Partner, ProductList) ->
+%     {getAlias(), getNode(getAlias())} ! {create_order, Partner, ProductList}.
 
 store(Alias) -> store(Alias, [], []).
 store(Alias, Partners, Products) ->
@@ -110,10 +113,11 @@ store(Alias, Partners, Products) ->
                             case rpc:call(getNode(Product), erlang, is_process_alive, [Pid]) of
                                 true ->
                                     io:format(
-                                        "~p product slave with quantity ~p created in node ~p~n", [
+                                        "Product ~p with quantity ~p created in node ~p~n", [
                                             Product, Quantity, getNode(Product)
                                         ]
                                     ),
+                                    Pid ! {created},
                                     store(Alias, Partners, Products ++ [{Product, Pid}]);
                                 false ->
                                     io:format("node ~p does not exist~n", [getNode(Product)]),
@@ -127,7 +131,7 @@ store(Alias, Partners, Products) ->
                 AddedPreviously ->
                     io:format("Removed product ~p ~n", [Product]),
                     Pid = get_pid(Product, Products),
-                    Pid ! {delete},
+                    Pid ! {remove},
                     store(Alias, Partners, delete_product_list(Product, Products));
                 true ->
                     io:format("Product ~p does not exist~n", [Product]),
@@ -156,13 +160,18 @@ store(Alias, Partners, Products) ->
 
 product(Product, Quantity) ->
     receive
+        {created} ->
+            io:format(user, "Product ~p was created with a stock of ~p ~n", [Product, Quantity]),
+            product(Product, Quantity);
         {remove} ->
             io:format(user, "Product ~p was removed  ~n", [Product]);
         {modify, Q} ->
             if
                 Q + Quantity >= 0 ->
+                    io:format(user, "New Stock for ~p is ~p ~n", [Product, Quantity + Q]),
                     product(Product, Q + Quantity);
                 true ->
+                    io:format(user, "Can't modify ~p stock with ~p ~n", [Product, Quantity + Q]),
                     product(Product, Quantity)
             end
     end.
@@ -197,7 +206,12 @@ test()->
     list_partners(),
     subscribe_partner(luis),
     list_partners(),
-    close_store(),
     register_product(cheese, 5),
-    register_product(cheese, 12).
+    register_product(cheese, 12),
+    modify_stock(cheese, 2),
+    modify_stock(cheese, -10),
+    modify_stock(eggs, 10),
+    remove_product(cheese),
+    remove_product(cheese),
+    close_store().
 
