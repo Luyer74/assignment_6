@@ -36,7 +36,18 @@ close_store() ->
     {getAlias(), getNode(getAlias())} ! {close}.
 
 subscribe_partner(Partner) ->
-    {getAlias(), getNode(getAlias())} ! {subscribe_partner, Partner}.
+    {getAlias(), getNode(getAlias())} ! {subscribe_partner, Partner, self()},
+    receive
+        starting ->
+            io:format("Partner ~p requests subscription ~n", [Partner])
+    end,
+    receive
+        ending ->
+            io:format("Partner ~p is subscribed ~n", [Partner]);
+        exists ->
+            io:format("Partiner ~p is taken. Choose another name~n", [Partner])
+    end.
+
 
 delete_partner(Partner) ->
     {getAlias(), getNode(getAlias())} ! {delete_partner, Partner}.
@@ -56,17 +67,20 @@ modify_stock(Product, Quantity) ->
 store(Alias) -> store(Alias, [], []).
 store(Alias, Partners, Products) ->
     receive
-        {subscribe_partner, Partner} ->
+        {subscribe_partner, Partner, Pid} ->
+            Pid ! starting,
             AddedPreviously = lists:any(fun(X) -> X == Partner end, Partners),
             if
                 % already exists partner
                 AddedPreviously ->
                     io:format("Partner ~p already exist~n", [Partner]),
+                    Pid ! exists,
                     store(Alias, Partners, Products);
                 true ->
                     io:format("~p partner created ~n", [
                         Partner
                     ]),
+                    Pid ! ending,
                     store(Alias, Partners ++ [Partner], Products)
             end;
         {delete_partner, Partner} ->
@@ -183,4 +197,7 @@ test()->
     list_partners(),
     subscribe_partner(luis),
     list_partners(),
-    close_store().
+    close_store(),
+    register_product(cheese, 5),
+    register_product(cheese, 12).
+
