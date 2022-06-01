@@ -13,6 +13,7 @@
     remove_product/1,
     modify_stock/2,
     close_store/0,
+    stock_list/0,
     test/0
 ]).
 
@@ -78,6 +79,12 @@ modify_stock(Product, Quantity) ->
 
 % create_order(Partner, ProductList) ->
 %     {getAlias(), getNode(getAlias())} ! {create_order, Partner, ProductList}.
+
+stock_list() ->
+    {getAlias(), getNode(getAlias())} ! {stock_list, self()},
+    receive
+        List -> io:fwrite("~w~n", [List])
+    end.
 
 store(Alias) -> store(Alias, [], []).
 store(Alias, Partners, Products) ->
@@ -168,8 +175,21 @@ store(Alias, Partners, Products) ->
             io:fwrite("~w~n", [Partners]),
             Pid ! Partners,
             store(Alias, Partners, Products);
+        {stock_list, Pid} ->
+            % io:fwrite("~w~n", [Products]),
+            MapFun = fun({Product, PidProduct}) ->
+                PidProduct ! {query_stock, self()},
+                receive
+                    Quantity -> {Product, Quantity}
+                end
+            end,
+            io:fwrite("~w~n", [lists:map(MapFun, Products)]),
+            Pid ! lists:map(MapFun, Products),
+            store(Alias, Partners, Products);
         {close} ->
-            RemoveProduct = fun({_, Pid}) -> Pid ! {remove} end,
+            RemoveProduct = fun({_, Pid}) ->
+                Pid ! {remove}
+            end,
             lists:foreach(RemoveProduct, Products),
             io:format("Closing store ~n")
     end.
@@ -189,7 +209,10 @@ product(Product, Quantity) ->
                 true ->
                     io:format(user, "Can't modify ~p stock with ~p ~n", [Product, Quantity + Q]),
                     product(Product, Quantity)
-            end
+            end;
+        {query_stock, Pid} ->
+            Pid ! Quantity,
+            product(Product, Quantity)
     end.
 
 delete_product_list(_, []) ->
