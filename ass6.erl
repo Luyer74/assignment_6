@@ -22,7 +22,7 @@ getAlias() -> store.
 % transforms an atom name to a short machine name
 getNode(Name) ->
     list_to_atom(
-        atom_to_list(Name) ++ "@Luiss-MacBook-Air-2"
+        atom_to_list(Name) ++ "@MJI-LAPTOP"
     ).
 
 % Creates and starts the master process of the store,
@@ -48,12 +48,24 @@ subscribe_partner(Partner) ->
             io:format("Partner ~p is taken. Choose another name~n", [Partner])
     end.
 
-
 delete_partner(Partner) ->
-    {getAlias(), getNode(getAlias())} ! {delete_partner, Partner}.
+    {getAlias(), getNode(getAlias())} ! {delete_partner, Partner, self()},
+    receive
+        starting ->
+            io:format("Partner ~p requests unsubscribing ~n", [Partner])
+    end,
+    receive
+        ending ->
+            io:format("Partner ~p is unsubscribed ~n", [Partner]);
+        dont_exist ->
+            io:format("Partner ~p dont exists~n", [Partner])
+    end.
 
 list_partners() ->
-    {getAlias(), getNode(getAlias())} ! {list_partners}.
+    {getAlias(), getNode(getAlias())} ! {list_partners, self()},
+    receive
+        List -> io:fwrite("~w~n", [List])
+    end.
 
 register_product(Product, Quantity) ->
     {getAlias(), getNode(getAlias())} ! {register_product, Product, Quantity}.
@@ -86,14 +98,17 @@ store(Alias, Partners, Products) ->
                     Pid ! ending,
                     store(Alias, Partners ++ [Partner], Products)
             end;
-        {delete_partner, Partner} ->
+        {delete_partner, Partner, Pid} ->
+            Pid ! starting,
             AddedPreviously = lists:any(fun(X) -> X == Partner end, Partners),
             if
                 AddedPreviously ->
                     io:format("Deleted partner ~p ~n", [Partner]),
+                    Pid ! ending,
                     store(Alias, lists:delete(Partner, Partners), Products);
                 true ->
                     io:format("Partner ~p does not exist~n", [Partner]),
+                    Pid ! dont_exist,
                     store(Alias, Partners, Products)
             end;
         {register_product, Product, Quantity} ->
@@ -149,8 +164,9 @@ store(Alias, Partners, Products) ->
                     io:format("Product ~p does not exist~n", [Product]),
                     store(Alias, Partners, Products)
             end;
-        {list_partners} ->
+        {list_partners, Pid} ->
             io:fwrite("~w~n", [Partners]),
+            Pid ! Partners,
             store(Alias, Partners, Products);
         {close} ->
             RemoveProduct = fun({_, Pid}) -> Pid ! {remove} end,
@@ -196,7 +212,7 @@ get_pid(P, [{PD, PID} | R]) ->
             get_pid(P, R)
     end.
 
-test()->
+test() ->
     open_store(),
     subscribe_partner(luis),
     subscribe_partner(luis),
@@ -214,4 +230,3 @@ test()->
     remove_product(cheese),
     remove_product(cheese),
     close_store().
-
