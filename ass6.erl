@@ -14,7 +14,8 @@
     modify_stock/2,
     stock_list/0,
     stock_list/1,
-    close_store/0
+    close_store/0,
+    test/0
 ]).
 
 % generic name "store"
@@ -23,7 +24,7 @@ getAlias() -> store.
 % transforms an atom name to a short machine name
 getNode(Name) ->
     list_to_atom(
-        atom_to_list(Name) ++ "@MJI-LAPTOP"
+        atom_to_list(Name) ++ "@Luiss-MacBook-Air-2"
     ).
 
 % Creates and starts the master process of the store,
@@ -66,6 +67,7 @@ store(Alias) -> store(Alias, [], []).
 store(Alias, Partners, Products) ->
     receive
         {subscribe_partner, Partner} ->
+            io:format("Subscribing..."),
             Alive = net_adm:ping(getNode(Partner)),
             if
                 Alive == pang ->
@@ -99,7 +101,8 @@ store(Alias, Partners, Products) ->
                     io:format("Deleted partner ~p ~n", [Partner]),
                     Pid = get_person_pid(Partner, Partners),
                     Pid ! {delete},
-                    store(Alias, lists:delete(Partner, Partners), Products);
+                    NewList = lists:filter(fun({Name, _}) -> Name /= Partner end, Partners),
+                    store(Alias, NewList, Products);
                 true ->
                     io:format("Partner ~p does not exist~n", [Partner]),
                     store(Alias, Partners, Products)
@@ -196,3 +199,15 @@ get_person_pid(P, [{PD, PID} | R]) ->
         true ->
             get_person_pid(P, R)
     end.
+
+test()->
+    open_store(),
+    subscribe_partner(luis),
+    subscribe_partner(luis),
+    list_partners(),
+    delete_partner(yerik),
+    delete_partner(luis),
+    list_partners(),
+    subscribe_partner(luis),
+    list_partners(),
+    close_store().
