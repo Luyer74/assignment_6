@@ -68,7 +68,7 @@ list_partners() ->
     end.
 
 register_product(Product, Quantity) ->
-    {getAlias(), getNode(getAlias())} ! {register_product, Product, Quantity}.
+    {getAlias(), getNode(getAlias())} ! {register_product, Product, Quantity, node()}.
 
 remove_product(Product) ->
     {getAlias(), getNode(getAlias())} ! {remove_product, Product}.
@@ -111,31 +111,31 @@ store(Alias, Partners, Products) ->
                     Pid ! dont_exist,
                     store(Alias, Partners, Products)
             end;
-        {register_product, Product, Quantity} ->
+        {register_product, Product, Quantity, Node} ->
             AddedPreviously = lists:any(fun({P, _}) -> P == Product end, Products),
-            Alive = net_adm:ping(getNode(Product)),
+            Alive = net_adm:ping(Node),
             if
-                Alive == pang ->
-                    io:format("node ~p is down~n", [getNode(Product)]),
+                AddedPreviously ->
+                    io:format("Product ~p already exists ~n", [Product]),
                     store(Alias, Partners, Products);
                 true ->
                     if
-                        AddedPreviously ->
-                            io:format("Product ~p already exists ~n", [Product]),
+                        Alive == pang ->
+                            io:format("node ~p is down, please try again ~n", [Node]),
                             store(Alias, Partners, Products);
                         true ->
-                            Pid = spawn(getNode(Product), ?MODULE, product, [Product, Quantity]),
-                            case rpc:call(getNode(Product), erlang, is_process_alive, [Pid]) of
+                            Pid = spawn(Node, ?MODULE, product, [Product, Quantity]),
+                            case rpc:call(Node, erlang, is_process_alive, [Pid]) of
                                 true ->
                                     io:format(
                                         "Product ~p with quantity ~p created in node ~p~n", [
-                                            Product, Quantity, getNode(Product)
+                                            Product, Quantity, Node
                                         ]
                                     ),
                                     Pid ! {created},
                                     store(Alias, Partners, Products ++ [{Product, Pid}]);
                                 false ->
-                                    io:format("node ~p does not exist~n", [getNode(Product)]),
+                                    io:format("node ~p does not exist~n", [Node]),
                                     store(Alias, Partners, Products)
                             end
                     end
@@ -156,7 +156,7 @@ store(Alias, Partners, Products) ->
             AddedPreviously = lists:any(fun({P, _}) -> P == Product end, Products),
             if
                 AddedPreviously ->
-                    io:format("Modified stock of ~p ~n", [Product]),
+                    io:format("Modifying stock of ~p ....~n", [Product]),
                     Pid = get_pid(Product, Products),
                     Pid ! {modify, Quantity},
                     store(Alias, Partners, Products);
